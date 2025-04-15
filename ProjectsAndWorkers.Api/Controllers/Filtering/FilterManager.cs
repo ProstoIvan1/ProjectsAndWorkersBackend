@@ -2,7 +2,7 @@
 {
 	public class FilterManager<T>
 	{
-		public FilterManager(IEnumerable<IFilter<T>> filters)
+		public FilterManager(params IFilter<T>[] filters)
 		{
 			Filters = filters.ToList();
 		}
@@ -13,7 +13,10 @@
 		{
 			foreach (var filter in Filters)
 			{
-				query = query.Where(filter.GetExpression());
+				var expression = filter.GetExpression();
+
+				if (expression != null)
+					query = query.Where(expression);
 			}
 
 			return query;

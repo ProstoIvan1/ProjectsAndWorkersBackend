@@ -1,7 +1,4 @@
-﻿using Microsoft.EntityFrameworkCore;
-using ProjectsAndWorkers.Api.Models;
-
-namespace ProjectsAndWorkers.Api.Controllers.Sorting
+﻿namespace ProjectsAndWorkers.Api.Controllers.Sorting
 {
 	public class Sorter<T> where T : class
 	{

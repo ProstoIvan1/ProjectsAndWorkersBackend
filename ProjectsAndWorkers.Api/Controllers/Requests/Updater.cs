@@ -1,4 +1,6 @@
-﻿using ProjectsAndWorkers.Api.Models;
+﻿using ProjectsAndWorkers.Api.Controllers.Requests.Projects;
+using ProjectsAndWorkers.Api.Controllers.Requests.Workers;
+using ProjectsAndWorkers.Data.Models;
 
 namespace ProjectsAndWorkers.Api.Controllers.Requests
 {

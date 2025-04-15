@@ -1,8 +1,13 @@
 ﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Identity.Client;
 using ProjectsAndWorkers.Api.Controllers.Requests;
+using ProjectsAndWorkers.Api.Controllers.Requests.Workers;
 using ProjectsAndWorkers.Api.Controllers.Responses;
-using ProjectsAndWorkers.Api.Models;
+using ProjectsAndWorkers.Api.Controllers.Responses.Workers;
+using ProjectsAndWorkers.Data;
+using ProjectsAndWorkers.Data.Models;
+using System.Linq.Expressions;
 
 
 namespace ProjectsAndWorkers.Api.Controllers
@@ -21,23 +26,16 @@ namespace ProjectsAndWorkers.Api.Controllers
 		[HttpGet]
         public async Task<IActionResult> Get([FromQuery] GetWorkersRequest request, CancellationToken ct)
         {
-
 			IQueryable<Worker> query = _dataContext.Workers;
 
             if(!string.IsNullOrEmpty(request.SearchText))
 			{
-                string lowerSearchText = request.SearchText.ToLower();
-				string[] strings = lowerSearchText.Split(' ');
-
+				string[] strings = request.SearchText.Split(' ');
 				foreach (var str in strings)
 				{
-				    query = query.Where(w => 
-                    w.FirstName.ToLower().Contains(str) ||
-                    w.LastName.ToLower().Contains(str) ||
-                    w.Patronymic.ToLower().Contains(str)
-                    );					
-				}
-
+                    query = query.Where(w =>
+                    EF.Functions.Like(w.FirstName + w.LastName + w.Patronymic, $"%{str}%"));
+                }
 			}
 
 			Worker[] workers = await query.ToArrayAsync(ct);
@@ -84,9 +82,49 @@ namespace ProjectsAndWorkers.Api.Controllers
 			else return NotFound("Worker is not found");
 		}
 
-        
+        [HttpPut("{performerId}")]
+        public async Task<IActionResult> AddTasks([FromRoute] int performerId, [FromBody] AddTasksToWorkerRequest request, CancellationToken ct)
+        {
+			// check existence of the worker
+			if (!await _dataContext.Workers.IsExists(performerId, ct))
+				return NotFound("Worker was not found");
 
-        [HttpDelete("{id}")]
+			// check the existence of given ids
+
+			int? incorrectId = await _dataContext.Tasks.GetIncorrectId(ct, request.taskIds);
+
+			if (incorrectId != null)
+				return NotFound($"Task {incorrectId} was not found");
+
+			// update tasks
+
+			await _dataContext.Tasks
+				.Where(t => request.taskIds.Contains(t.Id))
+				.ExecuteUpdateAsync(s => s.SetProperty(t => t.PerformerId, performerId), ct);
+
+			return Ok();
+		}
+
+		[HttpPut("{performerId}")]
+		public async Task<IActionResult> RemoveTasks([FromRoute] int performerId, [FromBody] RemoveTasksFromWorkerRequest request, CancellationToken ct)
+		{
+			// check existence of the worker
+			if (!await _dataContext.Workers.IsExists(performerId, ct))
+				return NotFound("Worker was not found");
+
+			// check the existence of given ids
+			int? incorrectId = await _dataContext.Tasks.GetIncorrectId(ct, request.taskIds);
+			if (incorrectId != null)
+				return NotFound($"Task {incorrectId} was not found");
+
+			await _dataContext.Tasks
+				.Where(t => request.taskIds.Contains(t.Id) && t.PerformerId == performerId)
+				.ExecuteUpdateAsync(s => s.SetProperty(t => t.PerformerId, (int?) null), ct);
+
+			return Ok();
+		}
+
+		[HttpDelete("{id}")]
         public async Task<IActionResult> Delete([FromRoute] int id, CancellationToken ct)
         {
 			Worker? worker = await _dataContext.Workers

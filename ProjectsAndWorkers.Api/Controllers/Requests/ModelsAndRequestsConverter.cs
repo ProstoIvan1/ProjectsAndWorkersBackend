@@ -1,4 +1,7 @@
-﻿using ProjectsAndWorkers.Api.Models;
+﻿using ProjectsAndWorkers.Api.Controllers.Requests.Projects;
+using ProjectsAndWorkers.Api.Controllers.Requests.Tasks;
+using ProjectsAndWorkers.Api.Controllers.Requests.Workers;
+using ProjectsAndWorkers.Data.Models;
 
 namespace ProjectsAndWorkers.Api.Controllers.Requests
 {
@@ -37,6 +40,22 @@ namespace ProjectsAndWorkers.Api.Controllers.Requests
 				LastName = lastName,
 				Patronymic = patronymic,
 				Mail = mail
+			};
+		}
+
+		public static TaskEntity ToTask(this CreateTaskRequest request)
+		{
+			var (title, description, status, priority, authorId, performerId, projectId) = request;
+
+			return new TaskEntity()
+			{
+				Title = title,
+				Description = description,
+				Status = status,
+				Priority = priority,
+				AuthorId = authorId,
+				PerformerId = performerId,
+				ProjectId = projectId
 			};
 		}
 	}

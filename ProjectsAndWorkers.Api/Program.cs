@@ -1,6 +1,5 @@
-
-using Microsoft.AspNetCore.Cors.Infrastructure;
-using ProjectsAndWorkers.Api.Models;
+using Microsoft.EntityFrameworkCore;
+using ProjectsAndWorkers.Data;
 
 namespace ProjectsAndWorkers.Api
 {
@@ -12,7 +11,10 @@ namespace ProjectsAndWorkers.Api
 
             builder.Services.AddControllers();
             builder.Services.AddSwaggerGen();
-            builder.Services.AddDbContext<ProjectsAndWorkersDataContext>();
+            builder.Services.AddDbContext<ProjectsAndWorkersDataContext>(options =>
+            {
+                options.UseSqlite(builder.Configuration.GetConnectionString("SQLite"));
+            });
 
             builder.Services.AddCors(options =>
             {

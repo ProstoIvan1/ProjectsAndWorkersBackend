@@ -1,14 +1,15 @@
-﻿using Microsoft.AspNetCore.Components.Web;
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
+﻿using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ProjectsAndWorkers.Api.Controllers.Filtering;
+using ProjectsAndWorkers.Api.Controllers.Filtering.Projects;
 using ProjectsAndWorkers.Api.Controllers.Requests;
+using ProjectsAndWorkers.Api.Controllers.Requests.Projects;
 using ProjectsAndWorkers.Api.Controllers.Responses;
+using ProjectsAndWorkers.Api.Controllers.Responses.Projects;
 using ProjectsAndWorkers.Api.Controllers.Sorting;
-using ProjectsAndWorkers.Api.Models;
-using System.Linq.Expressions;
-using System.Net.Mail;
+using ProjectsAndWorkers.Api.Controllers.Sorting.Projects;
+using ProjectsAndWorkers.Data;
+using ProjectsAndWorkers.Data.Models;
 
 namespace ProjectsAndWorkers.Api.Controllers
 {
@@ -32,28 +33,27 @@ namespace ProjectsAndWorkers.Api.Controllers
 
 			// filters
 
-			FilterManager<Project> filters = new([]);
+			FilterManager<Project> filterManager = new(
+				new ProjectMaxPriorityFilter(maxPriority),
+				new ProjectMinPriorityFilter(minPriority),
+				new StartDateRangeFilter(startDateRange),
+				new EndDateRangeFilter(endDateRange));
 
-			if (maxPriority != null)
-				filters.Filters.Add(new MaxPriorityFilter((int) maxPriority));
+			filterManager.Filter(ref query);
 
-			if (minPriority != null)
-				filters.Filters.Add(new MinPriorityFilter((int) minPriority));
-
-			if (startDateRange != null)
-				filters.Filters.Add(new StartDateRangeFilter((DateOnly)startDateRange));
-
-			if (endDateRange != null)
-				filters.Filters.Add(new EndDateRangeFilter((DateOnly)endDateRange));
-
-			filters.Filter(ref query);
-
-			// sorting by id, priority, start and end dates 
-			var sorter = new Sorter<Project>(new NameProperty(), new EndDateProperty(), new StartDateProperty(), new PriorityProperty());
+			// sorting by id, priority, start and end dates
+			
+			var sorter = new Sorter<Project>(
+				new ProjectNameProperty(), 
+				new EndDateProperty(), 
+				new StartDateProperty(), 
+				new ProjectPriorityProperty());
 
 			bool isDesc = sortDirection == "desc";
 
 			sorter.Sort(ref query, sortItemName, isDesc);
+
+			// get projects
 
 			Project[] projects = await query.ToArrayAsync();
 			List<GetProjectResponse> records = new();
@@ -87,7 +87,7 @@ namespace ProjectsAndWorkers.Api.Controllers
 
 			// check the existence of given ids
 
-			int? incorrectId = await _dataContext.GetIncorrectWorkerId([.. request.WorkerIds, request.ManagerId]);
+			int? incorrectId = await _dataContext.Workers.GetIncorrectId(ct, [.. request.WorkerIds, request.ManagerId]);
 
 			if (incorrectId != null)
 				return NotFound($"Worker {incorrectId} is not found");
@@ -110,9 +110,11 @@ namespace ProjectsAndWorkers.Api.Controllers
         {
 			// check the existence of manager
 
-			bool isManagerExists = await _dataContext.GetIncorrectWorkerId(request.ManagerId) == null;
+			bool isManagerExists = await _dataContext.Workers.GetIncorrectId(ct, request.ManagerId) == null;
 			if (!isManagerExists)
 				return NotFound("Manager is not found");
+
+			// update project
 
 			Project? project = await _dataContext.Projects.FindAsync(id, ct);
 
@@ -131,6 +133,7 @@ namespace ProjectsAndWorkers.Api.Controllers
 		public async Task<IActionResult> AddWorkers([FromRoute] int projectId, AddWorkersToProjectRequest request, CancellationToken ct)
 		{
 			// get project from database including workers
+
 			Project? project = await _dataContext.Projects
 				.Include(p => p.Workers)
 				.Where(p => p.Id == projectId)
@@ -141,7 +144,7 @@ namespace ProjectsAndWorkers.Api.Controllers
 
 			// check the existence of given ids
 
-			int? incorrectId = await _dataContext.GetIncorrectWorkerId(request.workerIds);
+			int? incorrectId = await _dataContext.Workers.GetIncorrectId(ct, request.workerIds);
 
 			if (incorrectId != null)
 				return NotFound($"Worker {incorrectId} was not found");
@@ -166,9 +169,10 @@ namespace ProjectsAndWorkers.Api.Controllers
 		}
 
 		[HttpPut("{projectId}")]
-		public async Task<IActionResult> RemoveWorker([FromRoute] int projectId, [FromBody] RemoveWorkersFromProjectRequest request, CancellationToken ct)
+		public async Task<IActionResult> RemoveWorkers([FromRoute] int projectId, [FromBody] RemoveWorkersFromProjectRequest request, CancellationToken ct)
         {
 			// get project from database including workers
+
 			Project? project = await _dataContext.Projects
 				.Include(p => p.Workers)
 				.Where(p => p.Id == projectId)
@@ -180,6 +184,7 @@ namespace ProjectsAndWorkers.Api.Controllers
 			_dataContext.Workers.AttachRange(project.Workers);
 
 			// remove workers by id
+
 			foreach (var workerId in request.workerIds)
 			{
 				Worker? worker = project.Workers.Where(w => w.Id == workerId).FirstOrDefault();
@@ -189,6 +194,53 @@ namespace ProjectsAndWorkers.Api.Controllers
 			}
 
 			await _dataContext.SaveChangesAsync(ct);
+
+			return Ok();
+		}
+
+		[HttpPut("{projectId}")]
+		public async Task<IActionResult> AddTasks([FromRoute] int projectId, [FromBody] AddTasksToProjectRequest request, CancellationToken ct)
+		{
+			// check existence of the project
+
+			if (!await _dataContext.Projects.IsExists(projectId, ct))
+				return NotFound("Project was not found");
+
+			// check the existence of given ids
+
+			int? incorrectId = await _dataContext.Tasks.GetIncorrectId(ct, request.taskIds);
+
+			if (incorrectId != null)
+				return NotFound($"Task {incorrectId} was not found");
+
+			// update tasks
+
+			await _dataContext.Tasks
+				.Where(t => request.taskIds.Contains(t.Id))
+				.ExecuteUpdateAsync(s => s.SetProperty(t => t.ProjectId, projectId), ct);
+
+			return Ok();
+		}
+
+		[HttpPut("{projectId}")]
+		public async Task<IActionResult> RemoveTasks([FromRoute] int projectId, [FromBody] AddTasksToProjectRequest request, CancellationToken ct)
+		{
+			// check existence of the project
+
+			if (!await _dataContext.Projects.IsExists(projectId, ct))
+				return NotFound("Project was not found");
+
+			// check the existence of given ids
+
+			int? incorrectId = await _dataContext.Tasks.GetIncorrectId(ct, request.taskIds);
+			if (incorrectId != null)
+				return NotFound($"Task {incorrectId} was not found");
+
+			// delete tasks
+
+			await _dataContext.Tasks
+				.Where(t => request.taskIds.Contains(t.Id) && t.ProjectId == projectId)
+				.ExecuteDeleteAsync();
 
 			return Ok();
 		}

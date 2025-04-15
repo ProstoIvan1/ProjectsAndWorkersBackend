@@ -4,6 +4,6 @@ namespace ProjectsAndWorkers.Api.Controllers.Filtering
 {
 	public interface IFilter<T>
 	{
-		Expression<Func<T, bool>> GetExpression();
+		Expression<Func<T, bool>>? GetExpression();
 	}
 }
